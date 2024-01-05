@@ -213,7 +213,7 @@ void loop() {
       // Serial.print(F("Battery voltage: ")); Serial.println(F( readVoltage( VOLTAGE ) * 11 )); 
       
       if ( raw_acc_y < (idle_acc_y - 0.1) ) {      //    detect liftoff 
-        delay(100);         //    short delay to prevent accidental detection 
+        delay(100);         //    short delay to prevent false detection 
         IMU.readAcceleration( local_acc_x, local_acc_y, local_acc_z );
         if ( local_acc_y < (idle_acc_y - 0.1) ) {
           FLASH_log = SerialFlash.open( char_flash_filename ); 
@@ -228,13 +228,13 @@ void loop() {
       z_correction = zAxis.pid();
 
       servo_x.write(SERVO_X_HOME + x_correction);
-      servo_z.write(SERVO_Z_HOME - z_correction);   //    the positive direction is flipped 
+      servo_z.write(SERVO_Z_HOME - z_correction);   //    the positive direction is reversed  
 
       Serial.print(F("X-Axis: ")); Serial.print(xAxis.angle); Serial.print(F("\t")); Serial.print(x_correction/GEAR_RATIO); Serial.print(F("\t")); 
       Serial.print(F("Z-Axis: ")); Serial.print(zAxis.angle); Serial.print(F("\t")); Serial.print(z_correction/GEAR_RATIO); Serial.print(F("\t"));       
       Serial.print(F("Pressure = ")); Serial.print(pressure); Serial.print(F(" hPa \t")); Serial.print(F("Altitude = ")); Serial.print(altitude); Serial.println(F("m"));
 
-      if ( raw_acc_y > 1.2 /* horribly arbitrary */ || millis() > (liftoff_timestamp + MOTOR_BURN_TIME_MILLIS) ) {     //  check if acceleration is negative again 
+      if ( raw_acc_y > 0.2 || millis() > (liftoff_timestamp + MOTOR_BURN_TIME_MILLIS) ) {     //  check if acceleration is negative again 
         servo_x.write(SERVO_X_HOME); 
         servo_z.write(SERVO_Z_HOME); 
         currentState = State::COASTING; setColor (0,255,255); coasting_start_timestamp = millis();  
