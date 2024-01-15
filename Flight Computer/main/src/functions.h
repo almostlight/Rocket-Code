@@ -1,6 +1,7 @@
+#pragma once 
+#include <Arduino.h>
 #include "SerialFlash.h"
 #include <ratio>
-#pragma once 
 #include "Servo.h"
 #include "api/Common.h"
 #include "config.h" 

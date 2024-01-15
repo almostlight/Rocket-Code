@@ -49,7 +49,7 @@ float DRIFT_Z;
 #define SERVO_MAX     2000      //  use only for attaching 
 ////  GLOBAL CONSTANTS  
 #define MILIVOLT_THRESHOLD        455       //  a 9V alkaline is dead at 4.8V. This is 5V through a 100K/1M voltage divider (0.455V) 
-#define MOTOR_BURN_TIME_MILLIS     3500     //  change to actual value before flight 
+#define MOTOR_BURN_TIME_MILLIS     30000     //  change to actual value before flight 
 #define EJECTION_DELAY_MILLIS      4000     //  in miliseconds 
 #define ABORT_DEGREE_THRESHOLD        40.0 
 #define PARACHUTE_DEGREE_THRESHOLD    80.0 

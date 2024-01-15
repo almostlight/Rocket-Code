@@ -1,11 +1,16 @@
 /*
  *
  * Created by almostlight on Nov 1, 2022 
- *
+ * 
  * https://github.com/almostlight 
+ *
+ * Written for the Arduino Nano 33 BLE 
  * 
  */
 
+#include <Arduino.h>
+#include <vector> 
+#include <numeric> 
 #include <Wire.h>
 #include <SPI.h> 
 #include <Servo.h>
@@ -23,6 +28,8 @@
 
 #define FILE_SIZE_1M   1048576L 
 #define FILE_SIZE_4M   4194304L 
+
+using std::vector; 
 
 ////    SETUP FUNCTION    //// 
 
@@ -145,29 +152,38 @@ void setup() {
 
 
 bool PARACHUTE_EJECTED = false; 
-State currentState = State::WAITING; 
-Axis xAxis, yAxis, zAxis; 
+bool APOGEE = false; 
 RecordType Record; 
-uint32_t pressure_decrease_iterator = 0; 
+StateObject CurrentState = StateObject::WAITING; 
+AxisObject xAxis, yAxis, zAxis; 
+MovingAverageFilter Pressure_MovAvgFilter(20); 
+LowPassFilter Pressure_LowPassFilter(0.6), Altitude_LowPassFilter(0.6); 
+
+vector<float> pressure_diff_vector; 
 uint32_t execution_sum, loop_index = 0; 
 uint32_t start_millis_main, end_millis_main; float delta_millis_main; 
 uint32_t liftoff_timestamp = 0, coasting_start_timestamp = 0; 
-float pressure, prev_pressure, altitude; 
+float pressure_raw, altitude_raw;
+float pressure, altitude; 
+float smooth_pressure; 
 float raw_gyro_x, raw_gyro_y, raw_gyro_z; 
 float raw_acc_x, raw_acc_y, raw_acc_z; 
 float local_acc_x, local_acc_y, local_acc_z; 
 float idle_acc_y; 
 float x_correction, z_correction; 
+float pressure_diff, pressure_diff_avg; 
 
 void loop() {
   //  Delta is converted to seconds to save time   
   delta_millis_main = (end_millis_main - start_millis_main)/1000.0; 
   start_millis_main = millis();
 
-  while ( !IMU.accelerationAvailable() || !IMU.gyroscopeAvailable() );    //  this will pause measurements until new ones are available 
   if ( !BMP.performReading() ) Serial.println(F("Failed to perform reading"));
-  altitude = BMP.readAltitude( SEALEVELPRESSURE_HPA );    //  in meters 
-  pressure = BMP.pressure;      //  in Pascals 
+  altitude_raw = BMP.readAltitude( SEALEVELPRESSURE_HPA );    //  in meters 
+  pressure_raw = BMP.pressure;      //  in Pascals 
+  altitude = Pressure_LowPassFilter.getEstimate(altitude_raw); 
+  pressure = Altitude_LowPassFilter.getEstimate(pressure_raw); 
+  smooth_pressure = Pressure_MovAvgFilter.getEstimate(pressure_raw); 
   IMU.readGyroscope( raw_gyro_x, raw_gyro_y, raw_gyro_z ); 
   IMU.readAcceleration( raw_acc_x, raw_acc_y, raw_acc_z ); 
 
@@ -175,14 +191,14 @@ void loop() {
     idle_acc_y = raw_acc_y; 
   }
 
-  if ( currentState != State::WAITING ) {
+  if ( CurrentState != StateObject::WAITING ) {
     xAxis.angle += (raw_gyro_x - DRIFT_X) * delta_millis_main;    //  multiply angular rates by time delta 
     yAxis.angle += (raw_gyro_y - DRIFT_Y) * delta_millis_main;    //  in deg/sec * seconds 
     zAxis.angle += (raw_gyro_z - DRIFT_Z) * delta_millis_main;    //  let's get some roll data! 
 
     //  Update  record 
     Record.recordNumber++; 
-    Record.machineStateIndex = static_cast<int>(currentState); 
+    Record.machineStateIndex = static_cast<int>(CurrentState); 
     Record.timeStamp = millis(); 
     Record.pressure = pressure; 
     Record.altitude = altitude; 
@@ -205,59 +221,59 @@ void loop() {
 ////    STATE ROUTINES    ////
 
 
-  switch ( currentState ) 
+  switch ( CurrentState ) 
   { 
-    case State::WAITING:     //  Pre-launch routine 
-      Serial.print(F("Acceleration  X: ")); Serial.print(raw_acc_x); Serial.print(F("\t Y: ")); 
-      Serial.print(raw_acc_y); Serial.print(F("\t Z: ")); Serial.print(raw_acc_z); Serial.print(F("\n")); 
-      // Serial.print(F("Battery voltage: ")); Serial.println(F( readVoltage( VOLTAGE ) * 11 )); 
+    case StateObject::WAITING:     //  Pre-launch routine 
+      Serial.print(F("Acceleration  X: ")); Serial.print(raw_acc_x); Serial.print(F("\t Y: ")); Serial.print(raw_acc_y); Serial.print(F("\t Z: ")); Serial.print(raw_acc_z); Serial.print(F("\n")); 
+      //Serial.print(F("Battery voltage: ")); Serial.println(F( readVoltage( VOLTAGE ) * 11 )); 
       
       if ( raw_acc_y < (idle_acc_y - 0.1) ) {      //    detect liftoff 
-        delay(100);         //    short delay to prevent false detection 
+        delay(100);         //    short delay to prevent accidental detection 
         IMU.readAcceleration( local_acc_x, local_acc_y, local_acc_z );
         if ( local_acc_y < (idle_acc_y - 0.1) ) {
           FLASH_log = SerialFlash.open( char_flash_filename ); 
-          currentState = State::ASCENT; setColor (255,255,0); liftoff_timestamp = millis(); 
+          CurrentState = StateObject::ASCENT; setColor (255,255,0); liftoff_timestamp = millis(); 
         }
       }
     break;
 
 
-    case State::ASCENT:     //  TVC routine 
-      x_correction = xAxis.pid();
-      z_correction = zAxis.pid();
+    case StateObject::ASCENT:     //  TVC routine 
+      xAxis.getPID(x_correction);
+      zAxis.getPID(z_correction);
 
       servo_x.write(SERVO_X_HOME + x_correction);
-      servo_z.write(SERVO_Z_HOME - z_correction);   //    the positive direction is reversed  
+      servo_z.write(SERVO_Z_HOME - z_correction);   //    the positive direction is flipped 
 
       Serial.print(F("X-Axis: ")); Serial.print(xAxis.angle); Serial.print(F("\t")); Serial.print(x_correction/GEAR_RATIO); Serial.print(F("\t")); 
       Serial.print(F("Z-Axis: ")); Serial.print(zAxis.angle); Serial.print(F("\t")); Serial.print(z_correction/GEAR_RATIO); Serial.print(F("\t"));       
       Serial.print(F("Pressure = ")); Serial.print(pressure); Serial.print(F(" hPa \t")); Serial.print(F("Altitude = ")); Serial.print(altitude); Serial.println(F("m"));
 
-      if ( raw_acc_y > 0.2 || millis() > (liftoff_timestamp + MOTOR_BURN_TIME_MILLIS) ) {     //  check if acceleration is negative again 
+      if ( raw_acc_y > 1.2 /* horribly arbitrary */ || millis() > (liftoff_timestamp + MOTOR_BURN_TIME_MILLIS) ) {     //  check if acceleration points downward again 
         servo_x.write(SERVO_X_HOME); 
         servo_z.write(SERVO_Z_HOME); 
-        currentState = State::COASTING; setColor (0,255,255); coasting_start_timestamp = millis();  
+        CurrentState = StateObject::COASTING; setColor (0,255,255); coasting_start_timestamp = millis();  
       } else if ( abs(xAxis.angle) > ABORT_DEGREE_THRESHOLD || abs(zAxis.angle) > ABORT_DEGREE_THRESHOLD ) {
-        currentState = State::ABORT; 
+        CurrentState = StateObject::ABORT; 
       }
     break;
 
 
-    case State::COASTING:     //  Coast routine 
-      prev_pressure = pressure; 
-      delay(200);                     //  stupid arbitrary delay 
-      if ( ( BMP.readPressure() - 0.5 ) > prev_pressure ) {     //  check if pressure is increasing 
-        pressure_decrease_iterator ++; 
-      } else {
-        pressure_decrease_iterator = 0; 
-      }
-      if ( pressure_decrease_iterator > 5 ) {     //  eject if pressure has increased n times 
+    case StateObject::COASTING:     //  Coast routine 
+      delay(200);
+      pressure_diff = smooth_pressure - Pressure_MovAvgFilter.getPreviousEstimate();
+      pressure_diff_vector.push_back(pressure_diff); 
+      if (pressure_diff_vector.size() >= 10) { 
+        pressure_diff_avg = accumulate(pressure_diff_vector.begin(), pressure_diff_vector.end(), 0.0); 
+        pressure_diff_vector.erase(pressure_diff_vector.begin()); 
+        if (pressure_diff_avg < 0) {
+          APOGEE = true; 
+        }
+      } 
+
+      if ( APOGEE == true ) {     //  eject if pressure has increased n times 
         ejectParachute(); PARACHUTE_EJECTED = true; 
         Serial.println(F("Ejection triggered by pressure"));  
-      } else if ( abs(xAxis.angle) > PARACHUTE_DEGREE_THRESHOLD || abs(zAxis.angle) > PARACHUTE_DEGREE_THRESHOLD ) {     //  check if pressure has increased over 3 times 
-        ejectParachute(); PARACHUTE_EJECTED = true; 
-        Serial.println(F("Ejection triggered by orientation")); 
       } else if ( millis() - coasting_start_timestamp > EJECTION_DELAY_MILLIS ) {
         ejectParachute(); PARACHUTE_EJECTED = true;  
         Serial.println(F("Ejection triggered by delay"));  
@@ -265,22 +281,22 @@ void loop() {
       if ( PARACHUTE_EJECTED ) {
         servo_x.detach();     //  Save power by disabling TVC servos 
         servo_z.detach(); 
-        currentState = State::DESCENT; setColor (0,0,255); 
+        CurrentState = StateObject::DESCENT; setColor (0,0,255); 
         break; 
       }
     break; 
-  
 
-    case State::DESCENT:     //  Parachute descent routine 
+
+    case StateObject::DESCENT:     //  Parachute descent routine 
       delay(500); 
       IMU.readAcceleration( local_acc_x, local_acc_y, local_acc_z ); 
       if ( abs( raw_acc_x - local_acc_x ) < IDLE_ACCELERATION_MARGIN && abs( raw_acc_y - local_acc_y ) < IDLE_ACCELERATION_MARGIN && abs( raw_acc_z - local_acc_z ) < IDLE_ACCELERATION_MARGIN ) {
-        currentState = State::LANDED; setColor (255,0,255); 
+        CurrentState = StateObject::LANDED; setColor (255,0,255); 
       }
     break;
     
     
-    case State::LANDED:     //  Landed routine 
+    case StateObject::LANDED:     //  Landed routine 
       tone(BUZZER, 2000); 
       //  Copy logfile from Flash to SD 
       FLASH_log = SerialFlash.open( char_flash_filename ); 
@@ -288,18 +304,17 @@ void loop() {
       copyRecordsToSD( FLASH_log, SD_log );   //  wait until finished 
       FLASH_log.close(); 
       SD_log.flush(); 
-      SD_log.close(); 
-      SD.end();         //  unmount SD card 
+      SD_log.close();      //  finish writing to SD card 
       setColor(0, 0, 0); noTone(BUZZER); 
       if (SUSPEND_ENABLE) {
         delay(100); 
         powerDown(); 
       } 
-      else Serial.println(F("Suspend disabled in config!")); while ( true ); 
+      else { Serial.println(F("Suspend disabled in config!")); while ( true ); }
     break; 
 
 
-    case State::ABORT: 
+    case StateObject::ABORT: 
       Serial.println(F("ABORTED")); 
       servo_x.write(SERVO_X_HOME); 
       servo_z.write(SERVO_Z_HOME); 
@@ -308,7 +323,7 @@ void loop() {
       setColor(0, 0, 0); noTone(BUZZER); 
 
       if ( millis() > (liftoff_timestamp + MOTOR_BURN_TIME_MILLIS) ) {     //  check if motor has burned out 
-        currentState = State::COASTING; setColor (0,255,255); coasting_start_timestamp = millis(); 
+        CurrentState = StateObject::COASTING; setColor (0,255,255); coasting_start_timestamp = millis(); 
       }
     break; 
   } 
@@ -322,7 +337,7 @@ void loop() {
       Serial.println(F("Battery near depletion. Suspending.")); 
       setColor (255, 0, 0); 
       if (SUSPEND_ENABLE) powerDown(); 
-      else Serial.println(F("Suspend disabled in config!")); while ( true ); 
+      else { Serial.println(F("Suspend disabled in config!")); while ( true ); }
     } 
   } 
 
@@ -333,4 +348,3 @@ void loop() {
   Serial.print(F("Timestamp: ")); Serial.println(start_millis_main); 
   Serial.print(F("  Average execution time (ms) is: ")); Serial.println(execution_sum/loop_index); 
 }
-
