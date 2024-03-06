@@ -10,6 +10,8 @@ SerialFlashFile signature;
 SerialFlashFile flash_logfile; 
 char char_flash_filename[32]; 
 
+bool RECORDING = false; 
+
 
 void flashInfo() {      //  info about the flash chip 
   uint8_t id[5];
@@ -70,12 +72,14 @@ bool createFlashLogfile( int file_size ) {
 
 bool startRecording() {
   flash_logfile = SerialFlash.open( char_flash_filename ); 
+  RECORDING = true; 
   return true; 
 }
 
 
 bool stopRecording() {
   flash_logfile.close(); 
+  RECORDING = false; 
   return true; 
 }
 

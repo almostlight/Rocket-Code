@@ -1,6 +1,6 @@
 #pragma once 
-#include "config.h"
 #include <Arduino.h>
+#include "config.h"
 
 //  StateName class with enumerated states 
 enum class StateName {
@@ -10,6 +10,17 @@ enum class StateName {
   DESCENT,  // Blue     0,0,255 
   LANDED,   // Fuchsia  255,0,255
   ABORT     // Red      255,0,0
+}; 
+
+
+enum class SpecialEvents {
+  STARTUP,
+  LIFTOFF,
+  ACCEL_BURNOUT, 
+  TIME_BURNOUT, 
+  PRESSURE_EJECT, 
+  TIME_EJECT, 
+  LANDING
 }; 
 
 

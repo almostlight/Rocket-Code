@@ -74,7 +74,7 @@ double SERVO_Z_HOME = 84.0;
 ////  GLOBAL CONSTANTS  
 #define BATTERY_MIN_VOLTS       10.8        //  3S at 3.6V per cell
 #define BATTERY_MAX_VOLTS       12.6        //  3S at 4.2V per cell
-#define MOTOR_BURN_TIME_LIMIT_MILLIS     5000     //  change to actual value before flight 
+#define MOTOR_BURN_TIME_LIMIT_MILLIS     5500     //  change to actual value before flight 
 #define EJECTION_DELAY_MILLIS      4000     //  in miliseconds 
 #define ABORT_DEGREE_THRESHOLD        40.0 
 #define PARACHUTE_DEGREE_THRESHOLD    80.0 
@@ -89,6 +89,6 @@ const bool WIPE_FLASH = false;
 const bool PYROS_ENABLE = true;
 const bool SUSPEND_ENABLE = true;
 //    this will only run WAIT, POWERED_ASCENT, and LANDED 
-const bool STATIC_FIRE = true;
+const bool STATIC_FIRE = false;
 //    this will count down and fire chutes 
 const bool PARACHUTE_TEST = false; 

@@ -118,7 +118,7 @@ void setup() {
       STARTUP_ERROR = true; 
     }
     //  Create recovery file of previous flight on SD 
-    writeRecoveryFile(); 
+    copyRecordsToSD(); 
 
     if (!createFlashLogfile(FILE_SIZE_4M)) {
       STARTUP_ERROR = true; 
@@ -137,6 +137,7 @@ void setup() {
 
   debug(F("\nAll devices initialized successfully")); 
   setColor(Green);  
+  Record.specialEventIndex = static_cast<int>(SpecialEvents::STARTUP); 
 }
 
 ////    END OF SETUP FUNCTION    ////
@@ -185,9 +186,11 @@ void loop() {
       
       if ( Acceleration.y > (AccelerationAverage.y + IDLE_ACCELERATION_MARGIN)   &&   loop_index > 100 ) {      //    detect liftoff at upward acceleration 
         CurrentState.setState(StateName::POWERED_ASCENT); 
+        Record.specialEventIndex = static_cast<int>(SpecialEvents::LIFTOFF); 
       } else if ( STATIC_FIRE && loop_index > 100 ) {
         countdown(COUNTDOWN_TIME_SEC); 
         CurrentState.setState(StateName::POWERED_ASCENT); 
+        Record.specialEventIndex = static_cast<int>(SpecialEvents::LIFTOFF); 
         //  signal to light motor 
         analogWrite(PYRO_3, 255); 
         debugln("Motor ignition.");
@@ -207,27 +210,31 @@ void loop() {
       debug(F("Pressure: ")); debug(pressure); debug(F(" hPa \t")); debug(F("Altitude: ")); debug(altitude); debugln(F(" m"));
       debug(F("Acc magnitude: ")); debug(acc_magnitude); debugln(F(" m/s^2"));
 
-      if ( !STATIC_FIRE ) {
-        if ( (Acceleration.y < (AccelerationAverage.y + IDLE_ACCELERATION_MARGIN)) || ( millis() > (CurrentState.state_change_timestamp + MOTOR_BURN_TIME_LIMIT_MILLIS ) ) ) {     
-          servo_x.write(SERVO_X_HOME); 
-          servo_z.write(SERVO_Z_HOME); 
-          CurrentState.setState(StateName::UNPOWERED_ASCENT); 
-        } else if ( fabs(Record.angleX) > ABORT_DEGREE_THRESHOLD || fabs(Record.angleZ) > ABORT_DEGREE_THRESHOLD ) {
-          CurrentState.setState(StateName::ABORT); 
+      if ( (millis() > (CurrentState.state_change_timestamp + MOTOR_BURN_TIME_LIMIT_MILLIS )) ) { 
+        Record.specialEventIndex = static_cast<int>(SpecialEvents::TIME_BURNOUT); 
+        //  this needs to be tested as a special event first 
+        if (Acceleration.y < (AccelerationAverage.y + IDLE_ACCELERATION_MARGIN)) {
+          Record.specialEventIndex = static_cast<int>(SpecialEvents::ACCEL_BURNOUT); 
         }
-      } else if ( STATIC_FIRE && ((millis() - CurrentState.state_change_timestamp) > MOTOR_BURN_TIME_LIMIT_MILLIS )) {
-        CurrentState.setState(StateName::DESCENT); 
-        analogWrite(PYRO_3, 0); 
+        if ( STATIC_FIRE ) {
+          CurrentState.setState(StateName::DESCENT); 
+          analogWrite(PYRO_3, 0); 
+        } else {
+          CurrentState.setState(StateName::UNPOWERED_ASCENT); 
+        }
+        //  center servos 
         servo_x.write(SERVO_X_HOME); 
         servo_z.write(SERVO_Z_HOME); 
-        delay(500); 
+        delay(200); 
+
+      } else if ( fabs(Record.angleX) > ABORT_DEGREE_THRESHOLD || fabs(Record.angleZ) > ABORT_DEGREE_THRESHOLD ) {
+        CurrentState.setState(StateName::ABORT); 
       }
     break;
 
 
     case StateName::UNPOWERED_ASCENT:     //  Coast routine 
       //  Save power by disabling TVC servos 
-      delay(500); 
       detachTvcServos(); 
       
       pressure_change = Pressure_MovAvgFilter.getChange(); 
@@ -238,8 +245,10 @@ void loop() {
         //  check if total change from previous n measurements is positive 
         if ( accumulate(pressure_change_vector.begin(), pressure_change_vector.end(), 0.0) > 0.0 ) {  
           APOGEE = true; debugln(F("Ejection triggered by pressure"));  
+          Record.specialEventIndex = static_cast<int>(SpecialEvents::PRESSURE_EJECT); 
         } else if ( millis() - CurrentState.state_change_timestamp > EJECTION_DELAY_MILLIS ) {
-          APOGEE = true; debugln(F("Ejection triggered by delay"));  
+          APOGEE = true; debugln(F("Ejection triggered by delay")); 
+          Record.specialEventIndex = static_cast<int>(SpecialEvents::TIME_EJECT); 
         }
       } 
 
@@ -257,6 +266,7 @@ void loop() {
     case StateName::DESCENT:     //  Parachute descent routine 
       if ( checkLanded(RawGyroRate.x, RawGyroRate.y, RawGyroRate.z) || (millis() - CurrentState.state_change_timestamp > 30000)) {  
         CurrentState.setState(StateName::LANDED); 
+        Record.specialEventIndex = static_cast<int>(SpecialEvents::LANDING); 
       }
     break;
     
@@ -282,7 +292,6 @@ void loop() {
       servo_x.write(SERVO_X_HOME); 
       servo_z.write(SERVO_Z_HOME); 
       setColor(Red); buzzerTone(3000); 
-      delay(200);
       setColor(Black); noTone(BUZZER); 
 
       if ( millis() > (CurrentState.state_change_timestamp + MOTOR_BURN_TIME_LIMIT_MILLIS) ) {     //  check if motor has burned out 
@@ -293,7 +302,7 @@ void loop() {
 
 ////    END OF STATE ROUTINES   ////
 
-  if ( CurrentState.state_name != StateName::WAITING ) {
+  if ( RECORDING ) {
     //  Update  record 
     Record.recordNumber++; 
     Record.timeStamp = millis(); 
