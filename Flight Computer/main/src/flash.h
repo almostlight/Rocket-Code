@@ -69,17 +69,15 @@ bool createFlashLogfile( int file_size ) {
   return true; 
 }
 
-
-bool startRecording() {
+//  opens flash logfile 
+bool openRecord() {
   flash_logfile = SerialFlash.open( char_flash_filename ); 
-  RECORDING = true; 
   return true; 
 }
 
-
-bool stopRecording() {
+//  closes flash logfile 
+bool closeRecord() {
   flash_logfile.close(); 
-  RECORDING = false; 
   return true; 
 }
 

@@ -24,12 +24,12 @@ void detachTvcServos() {
 }
 
 
-void testTvcServos() {
+void testTvcServos(int loops) {
   int servo_delay = 500; 
   servo_x.write(SERVO_X_HOME); 
   servo_z.write(SERVO_Z_HOME); 
   delay(servo_delay); 
-  for (int i=0; i<2; i++) {
+  for (int i=0; i<loops; i++) {
     servo_z.write(SERVO_Z_HOME+SERVO_DEG_MIN); delay(servo_delay);
     servo_x.write(SERVO_X_HOME+SERVO_DEG_MIN); delay(servo_delay);
     servo_z.write(SERVO_Z_HOME+SERVO_DEG_MAX); delay(servo_delay);

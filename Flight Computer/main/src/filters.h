@@ -12,9 +12,10 @@ class MovingAverageFilter {     //  Smooth curve but delayed
         double sum, change; 
     public: 
         MovingAverageFilter (unsigned int window_size): int_window_size(window_size) {}
+        void setInitialEstimate (double estimate) { current_estimate = estimate; previous_estimate = estimate; }
+
         double getPreviousEstimate () { return previous_estimate; }
         double getCurrentEstimate () { return current_estimate; }
-        void overrideCurrentEstimate (double override) { current_estimate = override; }
 
         double getEstimate (double measurement) {
           previous_estimate = current_estimate; 
@@ -41,6 +42,8 @@ class LowPassFilter {      //  Faster but worse for derivatives
         double alpha;    //  smoothing factor, 0 < alpha < 1 
     public: 
         LowPassFilter (double smoothing_factor): alpha(smoothing_factor) {}   //  initializer list 
+        void setInitialEstimate (double estimate) { current_estimate = estimate; previous_estimate = estimate; }
+
         double getPreviousEstimate () { return previous_estimate; }
         double getCurrentEstimate () { return current_estimate; }
 

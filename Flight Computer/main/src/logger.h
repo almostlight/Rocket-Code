@@ -6,6 +6,9 @@
 
 
 bool RECOVERY = true; 
+String data_header_string = "RecordNumber, Timestamp, MachineState, SpecialEvent, Voltage, Pressure, Altitude, " 
+                            "AccX, AccY, AccZ, RawX, RawY, RawZ, AngX, AngY, AngZ, "
+                            "PID_X, XP, XI, XD, PID_Z, ZP, ZI, ZD"; 
 
 
 struct RecordType {
@@ -19,7 +22,8 @@ struct RecordType {
   double accelerationX, accelerationY, accelerationZ; 
   double rotationRateX, rotationRateY, rotationRateZ; 
   double angleX, angleY, angleZ; 
-  double pidCorrectionX, pidCorrectionZ;
+  double pidCorrectionX, XpidP, XpidI, XpidD;
+  double pidCorrectionZ, ZpidP, ZpidI, ZpidD;
 } Record; 
 
 
@@ -129,7 +133,20 @@ bool copyRecordsToSD() {
         sd_logfile.print( "," );
         sd_logfile.print( current_record.pidCorrectionX );
         sd_logfile.print( "," );
+        sd_logfile.print( current_record.XpidP );
+        sd_logfile.print( "," );
+        sd_logfile.print( current_record.XpidI );
+        sd_logfile.print( "," );
+        sd_logfile.print( current_record.XpidD );
+        sd_logfile.print( "," );
         sd_logfile.print( current_record.pidCorrectionZ );
+        sd_logfile.print( "," );
+        sd_logfile.print( current_record.ZpidP );
+        sd_logfile.print( "," );
+        sd_logfile.print( current_record.ZpidI );
+        sd_logfile.print( "," );
+        sd_logfile.print( current_record.ZpidD );
+        sd_logfile.print( "," );
         sd_logfile.println(); 
       }
     } while ( current_record.recordNumber != 0xFFFFFFFF );

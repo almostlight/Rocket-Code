@@ -13,6 +13,7 @@ ColorRGB Blue {0,0,255};
 ColorRGB Fuchsia {255,0,255};
 ColorRGB Yellow {255,255,0};
 ColorRGB Aqua {0,255,255};
+ColorRGB Orange {255,165,0}; 
 
 void setColor(ColorRGB color) {
   analogWrite(LED_RED, 255 - color.r);

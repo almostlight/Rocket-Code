@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h> 
 #include <SPI.h> 
 #include <Servo.h>
@@ -78,10 +79,10 @@ void loop() {
     if (i==0) {
       if (PYROS_ENABLE) {
         Serial.println("\nMOTOR IGNITION"); 
-        digitalWrite(IGNITER_POWER, HIGH); 
+        analogWrite(IGNITER_POWER, 255); 
         clamp_servos.write(RETRACTED); 
         delay(IGNITION_LENGTH); 
-        digitalWrite(IGNITER_POWER, LOW);
+        analogWrite(IGNITER_POWER, 0);
       }
       ignited=true; 
       noTone(BUZZER);

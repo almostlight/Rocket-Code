@@ -17,7 +17,7 @@ DO NOT CHANGE */
 #define RETRACTED   80
 
 //  GLOBAL CONSTANTS 
-#define COUNTDOWN_LENGTH 10    // countdown in seconds - set to at least 30 before launch 
-#define IGNITION_LENGTH 1000   // pyro ignition duration in miliseconds 
+#define COUNTDOWN_LENGTH 20    // countdown in seconds - set to at least 30 before launch 
+#define IGNITION_LENGTH 2000   // pyro ignition duration in miliseconds 
 const bool PYROS_ENABLE = true; 
 

@@ -38,9 +38,8 @@ bool STARTUP_ERROR = false;
 bool APOGEE = false; 
 bool PARACHUTE_EJECTED = false; 
 
-ThreeAxes GyroDriftRate, AccelerationAverage; 
-ThreeAxes RawGyroRate, RawAcceleration;  
-ThreeAxes Angle, Acceleration; 
+ThreeAxes GyroRate, Acceleration;  
+ThreeAxes Angle, AdjustedAcceleration; 
 double zero_altitude; 
 
 vector<double> pressure_change_vector; 
@@ -73,22 +72,44 @@ void setup() {
   pinMode(OUT2, OUTPUT); 
   pinMode(OUT3, OUTPUT); 
   
-  setColor (Black); noTone(BUZZER);  
+  setColor (Black); noBuzzerTone();  
   setColor (Red); buzzerTone(250); delay(333); 
   setColor (Green); buzzerTone(500); delay(333); 
   setColor (Blue); buzzerTone(1000); delay(333);
-  setColor (Black); noTone(BUZZER); 
+  setColor (Black); noBuzzerTone(); 
 
   Serial.begin(9600);
   //while (!Serial);     
   debugln(F("Started Serial communication"));
 
+  if (CHECK_BATTERY) { 
+    if (readBatteryVoltage() < BATTERY_MIN_VOLTS) {
+      debugln(F("Battery near depletion. Suspending.")); 
+      powerDown(); 
+    } else {
+      int dec = map(readBatteryVoltage(), BATTERY_MIN_VOLTS, BATTERY_MAX_VOLTS, 0, 10); 
+      if (dec > 6) { 
+        setColor(Green); 
+      } else if (dec > 3) {
+        setColor(Blue);
+      } else {
+        setColor(Orange); 
+      }
+      for (int i=0; i<dec; i++) {
+        //  beep for every 10% charge 
+        delay(400); buzzerTone(2000); delay(100); noBuzzerTone();
+      }
+      setColor(Black); 
+      noBuzzerTone(); 
+    }
+  }
+
   if (PARACHUTE_TEST) {
     delay(1000); 
-    countdown(10); 
+    countdown(COUNTDOWN_TIME_SEC); 
     setColor(Yellow); 
     if (PYROS_ENABLE) {
-      ejectParachutePWM(PYRO_1, 255); 
+      ejectParachute(PYRO_1); 
     }
     setColor(Black); 
     //  stop here 
@@ -96,7 +117,7 @@ void setup() {
   }
 
   initTvcServos(); 
-  testTvcServos(); 
+  testTvcServos(1); 
 
   //  Initialize sensors  
   if (!initIMU(IMU)) {
@@ -123,17 +144,24 @@ void setup() {
     if (!createFlashLogfile(FILE_SIZE_4M)) {
       STARTUP_ERROR = true; 
     }
-    startRecording();   //  opens logfile 
+    openRecord();   //  opens logfile 
   }
 
   if (STARTUP_ERROR) {
-    setColor (Red); while ( true ); 
+    setColor (Red); 
+    buzzerAlarmLoop(3000, 3000); 
   }
+
   //  Calibrate IMU 
   setColor(White); 
-  calibrateIMU(IMU, AccelerationAverage, GyroDriftRate); 
-  debug("Average y-acceleration: "); debugln(AccelerationAverage.y); 
+  calibrateIMU(IMU); 
   zero_altitude = getAverageAltitude(BMP); 
+  IMU.refresh(); 
+  IMU.getAcceleration(Acceleration); 
+  
+  AccX_LowPass.setInitialEstimate(Acceleration.x); 
+  AccY_LowPass.setInitialEstimate(Acceleration.y); 
+  AccZ_LowPass.setInitialEstimate(Acceleration.z); 
 
   debug(F("\nAll devices initialized successfully")); 
   setColor(Green);  
@@ -147,7 +175,7 @@ void loop() {
   delta_millis_main = (end_millis_main - start_millis_main)/1000.0; 
   start_millis_main = millis();
 
-  if ( !BMP.performReading() ) debugln(F("Failed to perform reading"));
+  if ( !BMP.performReading() ) debugln(F("Failed to perform BMP reading"));
 
   voltage = readBatteryVoltage(); 
   altitude = (Altitude_LowPass.getEstimate(BMP.readAltitude( SEALEVELPRESSURE_HPA )) - zero_altitude);    //  in meters 
@@ -155,18 +183,18 @@ void loop() {
   smooth_pressure = Pressure_MovAvgFilter.getEstimate(BMP.pressure); 
 
   IMU.refresh(); 
-  IMU.getGyroscope( RawGyroRate.x, RawGyroRate.y, RawGyroRate.z ); 
-  IMU.getAcceleration( RawAcceleration.x, RawAcceleration.y, RawAcceleration.z ); 
+  IMU.getGyroscope( GyroRate ); 
+  IMU.getAcceleration( Acceleration ); 
 
-  Acceleration.x = AccX_LowPass.getEstimate(RawAcceleration.x); 
-  Acceleration.y = AccY_LowPass.getEstimate(RawAcceleration.y); 
-  Acceleration.z = AccZ_LowPass.getEstimate(RawAcceleration.z); 
+  AdjustedAcceleration.x = AccX_LowPass.getEstimate(Acceleration.x); 
+  AdjustedAcceleration.y = AccY_LowPass.getEstimate(Acceleration.y); 
+  AdjustedAcceleration.z = AccZ_LowPass.getEstimate(Acceleration.z); 
 
   //  start calculating angles and logging data at liftoff 
   if ( CurrentState.state_name != StateName::WAITING ) {
-    Angle.x += (RawGyroRate.x - GyroDriftRate.x) * delta_millis_main;    //  multiply angular rates by time delta 
-    Angle.y += (RawGyroRate.y - GyroDriftRate.y) * delta_millis_main;    //  in deg/sec * seconds 
-    Angle.z += (RawGyroRate.z - GyroDriftRate.z) * delta_millis_main;    //  let's get some roll data! 
+    Angle.x += (GyroRate.x) * delta_millis_main;    //  multiply angular rates by time delta 
+    Angle.y += (GyroRate.y) * delta_millis_main;    //  in deg/sec * seconds 
+    Angle.z += (GyroRate.z) * delta_millis_main;    //  let's get some roll data! 
   } 
 
 ////    STATE ROUTINES    ////
@@ -177,20 +205,22 @@ void loop() {
       if (CHECK_BATTERY) { 
         if (voltage < BATTERY_MIN_VOLTS) {
           debugln(F("Battery near depletion. Suspending.")); 
-          if (SUSPEND_ENABLE) powerDown(); 
-          else { debugln(F("Suspend disabled in config.")); while ( true ); }
+          powerDown(); 
         } 
       } 
 
-      debug(F("Acceleration  X: ")); debug(Acceleration.x); debug(F("\t Y: ")); debug(Acceleration.y); debug(F("\t Z: ")); debug(Acceleration.z); debug(F("\n")); 
-      
-      if ( Acceleration.y > (AccelerationAverage.y + IDLE_ACCELERATION_MARGIN)   &&   loop_index > 100 ) {      //    detect liftoff at upward acceleration 
+      debug(F("diff-Y: ")); debug(abs(AdjustedAcceleration.y - GRAVITATIONAL_ACCEL)); 
+
+      if ( abs(AdjustedAcceleration.y - GRAVITATIONAL_ACCEL) > IDLE_ACCELERATION_MARGIN ) {      //    detect liftoff at upward acceleration 
         CurrentState.setState(StateName::POWERED_ASCENT); 
         Record.specialEventIndex = static_cast<int>(SpecialEvents::LIFTOFF); 
-      } else if ( STATIC_FIRE && loop_index > 100 ) {
+        RECORDING = true; 
+
+      } else if ( STATIC_FIRE ) {
         countdown(COUNTDOWN_TIME_SEC); 
         CurrentState.setState(StateName::POWERED_ASCENT); 
         Record.specialEventIndex = static_cast<int>(SpecialEvents::LIFTOFF); 
+        RECORDING = true; 
         //  signal to light motor 
         analogWrite(PYRO_3, 255); 
         debugln("Motor ignition.");
@@ -203,19 +233,21 @@ void loop() {
       servo_x.write(SERVO_X_HOME - (pidX.compute() * GEAR_RATIO));
       servo_z.write(SERVO_Z_HOME + (pidZ.compute() * GEAR_RATIO));   //    the positive direction is flipped 
 
-      acc_magnitude = getAccelerationMagnitude(Acceleration.x, Acceleration.y, Acceleration.z); 
+      IMU.getAccelerationMagnitude(acc_magnitude); 
 
       debug(F("X-Axis: ")); debug(Angle.x); debug(F(" deg \t")); debugln(pidX.getCorrection()); 
       debug(F("Z-Axis: ")); debug(Angle.z); debug(F(" deg \t")); debugln(pidZ.getCorrection());    
       debug(F("Pressure: ")); debug(pressure); debug(F(" hPa \t")); debug(F("Altitude: ")); debug(altitude); debugln(F(" m"));
       debug(F("Acc magnitude: ")); debug(acc_magnitude); debugln(F(" m/s^2"));
 
+      //  this needs to be tested as a special event first 
+      if (AdjustedAcceleration.y > (GRAVITATIONAL_ACCEL)) {
+        Record.specialEventIndex = static_cast<int>(SpecialEvents::ACCEL_BURNOUT); 
+      }
+
       if ( (millis() > (CurrentState.state_change_timestamp + MOTOR_BURN_TIME_LIMIT_MILLIS )) ) { 
         Record.specialEventIndex = static_cast<int>(SpecialEvents::TIME_BURNOUT); 
-        //  this needs to be tested as a special event first 
-        if (Acceleration.y < (AccelerationAverage.y + IDLE_ACCELERATION_MARGIN)) {
-          Record.specialEventIndex = static_cast<int>(SpecialEvents::ACCEL_BURNOUT); 
-        }
+
         if ( STATIC_FIRE ) {
           CurrentState.setState(StateName::DESCENT); 
           analogWrite(PYRO_3, 0); 
@@ -253,7 +285,10 @@ void loop() {
       } 
 
       if ( APOGEE ) {   
-        ejectParachutePWM(PYRO_1, 255); 
+        if (altitude > 10.0) {
+          ejectParachute(PYRO_1); 
+          ejectParachute(PYRO_2); 
+        } 
         PARACHUTE_EJECTED = true; 
       } 
 
@@ -264,7 +299,7 @@ void loop() {
 
 
     case StateName::DESCENT:     //  Parachute descent routine 
-      if ( checkLanded(RawGyroRate.x, RawGyroRate.y, RawGyroRate.z) || (millis() - CurrentState.state_change_timestamp > 30000)) {  
+      if ( checkLanded(GyroRate) || (millis() - CurrentState.state_change_timestamp) > MAX_DESCENT_DURATION_MILLIS ) { 
         CurrentState.setState(StateName::LANDED); 
         Record.specialEventIndex = static_cast<int>(SpecialEvents::LANDING); 
       }
@@ -274,11 +309,12 @@ void loop() {
     case StateName::LANDED:     //  Landed routine 
       buzzerTone(2000);  
       if (LOGGING_ENABLE) { 
-        stopRecording();    //  closes logfile 
+        RECORDING = false; 
+        closeRecord();    //  closes logfile 
         copyRecordsToSD(); 
       }
       delay(1000); 
-      setColor(Black); noTone(BUZZER); 
+      setColor(Black); noBuzzerTone(); 
       if (SUSPEND_ENABLE) { 
         powerDown(); 
       } else { 
@@ -292,7 +328,9 @@ void loop() {
       servo_x.write(SERVO_X_HOME); 
       servo_z.write(SERVO_Z_HOME); 
       setColor(Red); buzzerTone(3000); 
-      setColor(Black); noTone(BUZZER); 
+      delay(100);
+      setColor(Black); noBuzzerTone(); 
+      delay(100);
 
       if ( millis() > (CurrentState.state_change_timestamp + MOTOR_BURN_TIME_LIMIT_MILLIS) ) {     //  check if motor has burned out 
         CurrentState.setState(StateName::UNPOWERED_ASCENT); 
@@ -310,17 +348,23 @@ void loop() {
     Record.voltage = voltage; 
     Record.pressure = pressure; 
     Record.altitude = altitude; 
-    Record.accelerationX = Acceleration.x;
-    Record.accelerationY = Acceleration.y;
-    Record.accelerationZ = Acceleration.z;
-    Record.rotationRateX = RawGyroRate.x;
-    Record.rotationRateY = RawGyroRate.y;
-    Record.rotationRateZ = RawGyroRate.z;
+    Record.accelerationX = AdjustedAcceleration.x;
+    Record.accelerationY = AdjustedAcceleration.y;
+    Record.accelerationZ = AdjustedAcceleration.z;
+    Record.rotationRateX = GyroRate.x;
+    Record.rotationRateY = GyroRate.y;
+    Record.rotationRateZ = GyroRate.z;
     Record.angleX = Angle.x;
     Record.angleY = Angle.y;
     Record.angleZ = Angle.z;
     Record.pidCorrectionX = pidX.getCorrection();
+    Record.XpidP = pidX.getP();
+    Record.XpidI = pidX.getI();
+    Record.XpidD = pidX.getD();
     Record.pidCorrectionZ = pidZ.getCorrection();
+    Record.ZpidP = pidZ.getP();
+    Record.ZpidI = pidZ.getI();
+    Record.ZpidD = pidZ.getD();
 
     //  Write struct to local memory 
     if (LOGGING_ENABLE) { 
@@ -333,8 +377,10 @@ void loop() {
   loop_index ++; 
   
   //  print battery charge in % 
+/*
   debug(F("Battery charge: ")); debug(map(voltage, BATTERY_MIN_VOLTS, BATTERY_MAX_VOLTS, 0, 100)); debugln(F("%")); 
-  debug(F("execution time (ms): ")); debugln(execution_time); 
+  debug(F("execution time (ms): ")); debugln(execution_time);
+*/ 
   debugln(); 
 }
 

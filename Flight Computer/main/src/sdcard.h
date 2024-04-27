@@ -5,7 +5,6 @@
 
 File sd_logfile; 
 char char_sd_filename[64]; 
-String data_header_string = "RecordNumber, MachineState, Timestamp, Pressure, Altitude, AccX, AccY, AccZ, RawX, RawY, RawZ, AngX, AngY, AngZ, PID_X, PID_Z"; 
 
 
 void getNextSDFilename() {

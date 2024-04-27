@@ -59,35 +59,47 @@
 #define KP    0.4
 #define KI    0.2
 #define KD    0.1
+
+////  TVC PROPERTIES 
 #define GEAR_RATIO  4.0    //  how many degrees on servo per degree on mount 
 #define MOUNT_DEG_MIN   -6.0   //  from 90 
 #define MOUNT_DEG_MAX   6.0   
 #define SERVO_DEG_MIN   -24.0
 #define SERVO_DEG_MAX   24.0
-double SERVO_X_HOME = 81.0;    // adjust in case of offsets 
-double SERVO_Z_HOME = 84.0; 
-
-#define CALIBRATION_TIME_SEC  10  // Set to at least 10 secs    
-#define COUNTDOWN_TIME_SEC       10 
 #define SERVO_MIN     1000      //  chrono values 
 #define SERVO_MAX     2000      //  use only for attaching 
+
 ////  GLOBAL CONSTANTS  
+#define GRAVITATIONAL_ACCEL   -9.81 
+#define SEALEVELPRESSURE_HPA (1013.25) 
 #define BATTERY_MIN_VOLTS       10.8        //  3S at 3.6V per cell
 #define BATTERY_MAX_VOLTS       12.6        //  3S at 4.2V per cell
-#define MOTOR_BURN_TIME_LIMIT_MILLIS     5500     //  change to actual value before flight 
-#define EJECTION_DELAY_MILLIS      4000     //  in miliseconds 
-#define ABORT_DEGREE_THRESHOLD        40.0 
-#define PARACHUTE_DEGREE_THRESHOLD    80.0 
-#define IDLE_ACCELERATION_MARGIN     0.5    //    m/s^2
-#define SEALEVELPRESSURE_HPA (1013.25) 
+#define PYRO_PULSE_WIDTH           40       //  I = (V/4) * n/256
+
 ////  TOGGLES 
-const bool CHECK_BATTERY = true;
-const bool LOGGING_ENABLE = true;
-const bool BUZZER_ENABLE = true;
-const bool WIPE_FLASH = false;
+const bool CHECK_BATTERY = false;
+const bool LOGGING_ENABLE = false;
+const bool BUZZER_ENABLE = false;
+const bool PYROS_ENABLE = false;
+const bool SUSPEND_ENABLE = true;   //  just don't change this 
+
+////    FLIGHT VARIABLES    //// 
+double SERVO_X_HOME = 81.0;    // adjust in case of offsets 
+double SERVO_Z_HOME = 84.0; 
+//  time settings 
+#define COUNTDOWN_TIME_SEC       10 
+#define CALIBRATION_TIME_SEC  10  // Set to at least 10 secs    
+#define MOTOR_BURN_TIME_LIMIT_MILLIS     5000     //  change to actual value before flight 
+#define EJECTION_DELAY_MILLIS      4000     //  in miliseconds 
+#define MAX_DESCENT_DURATION_MILLIS     30000   
+//  margins 
+#define IDLE_ACCELERATION_MARGIN     1.0    //    m/s^2
+#define ABORT_DEGREE_THRESHOLD        50.0 
+#define PARACHUTE_DEGREE_THRESHOLD    80.0 
+
+////    TEST TOGGLES    //// 
 //    the WIPE_FLASH toggle will wipe the flash chip at startup regardless of signature 
-const bool PYROS_ENABLE = true;
-const bool SUSPEND_ENABLE = true;
+const bool WIPE_FLASH = false;
 //    this will only run WAIT, POWERED_ASCENT, and LANDED 
 const bool STATIC_FIRE = false;
 //    this will count down and fire chutes 

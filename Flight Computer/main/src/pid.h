@@ -17,6 +17,9 @@ class PID {
   public: 
     PID (double* angle_variable): first_call(true), angle_ptr(angle_variable) {}
     double getCorrection () { return pid_output; }
+    double getP () { return P_term; }
+    double getI () { return I_term; }
+    double getD () { return D_term; }
     
     double compute () {
         //  get value from angle pointer 
